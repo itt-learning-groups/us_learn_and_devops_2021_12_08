@@ -2,22 +2,25 @@
 
 ## Goals
 
-* Conclude our helm survey
+* Conclude our helm survey by getting familiar with...
+  * Packaging helm charts
+  * Using helm repositories
 * Survey Kubernetes RBAC (role-based access control)
   * for users, specifically in context of an AWS EKS cluster in our demo example
   * for pods running in the cluster
 
 ## Concepts
 
-* RBAC
-  * Role
+* [Helm chart repositories](https://helm.sh/docs/topics/chart_repository/)
+* [K8s RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/)
+  * [Role](https://kubernetes.io/docs/reference/access-authn-authz/authorization/)
   * ClusterRole
   * RoleBinding
   * ClusterRoleBinding
-  * Subjects
-    * User
-    * ServiceAccount
-  * K8s API server authentication options
+  * [Subjects](https://kubernetes.io/docs/reference/access-authn-authz/rbac/#referring-to-subjects)
+    * User or Group
+    * [ServiceAccount](https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/)
+  * K8s API server [authentication](https://kubernetes.io/docs/reference/access-authn-authz/authentication/) options
 
 ## Lab
 
@@ -26,6 +29,112 @@
 * Follow the updated README in the `todoapi` [here](https://github.com/itt-learning-groups/todoapi/blob/master/build/README.md) to get the demo cluster up and running.
 
 ### 2. Helm Survey (concluded)
+
+* Package the helm chart into a compressed archive file
+
+  * Move into the `build/helm/chart_from_scratch` directory (that contains the chart directory) and run `helm package todoapi`:
+
+  !["024"](img/024.png "024")
+
+* We currently have our todoapi `dev` environment running.
+  It was created by installing the chart directory to the `dev` namespace.
+  Let's remove that release and try re-installing using the packaged helm chart:
+
+      helm upgrade --install todoapi ./todoapi-0.1.0.tgz \
+        --create-namespace \
+        --set 'ingress.hosts.host=todoapi.dev.ittlearninggroups.com' \
+        --set 'ingress.tls.hosts={todoapi.dev.ittlearninggroups.com}' \
+        --set 'db.name.value=todoapidev' \
+        --set "imageCredentials.registry=${DOCKER_SERVER}" \
+        --set "imageCredentials.username=${DOCKER_USERNAME}" \
+        --set "imageCredentials.password=${DOCKER_PSWD}" \
+        --set "imageCredentials.email=${DOCKER_EMAIL}" \
+        --set "dbCredentials.dbusername=${DB_USERNAME}" \
+        --set "dbCredentials.dbpswd=${DB_PSWD_DEV}" \
+        -n dev
+
+!["025"](img/025.png "025")
+
+* Create a new directory, e.g. "helm-charts", and move the packaged helm chart to that location.
+  We'll use this as a simple [helm chart repository](https://helm.sh/docs/topics/chart_repository/#hosting-chart-repositories).
+  Use `helm repo index .` to get helm to auto-generate a [repository index file](https://helm.sh/docs/topics/chart_repository/#the-index-file):
+
+  !["026"](img/026.png "026")
+
+  * We'll push this to a public repo on GitHub:
+
+  !["027"](img/027.png "027")
+
+* We can now access both the index file and the helm-chart archive file directly from GitHub, and so can helm:
+
+  * <https://raw.githubusercontent.com/itt-learning-groups/helm-charts/master/index.yaml>
+
+  !["028"](img/028.png "028")
+
+  * <https://github.com/itt-learning-groups/helm-charts/raw/master/todoapi-0.1.0.tgz>
+
+* We currently have our todoapi `qa` environment running.
+  It was created by installing the chart directory to the `qa` namespace.
+  Let's remove that release and try re-installing using the packaged helm chart:
+
+      helm upgrade --install todoapi "https://github.com/itt-learning-groups/helm-charts/raw/master/todoapi-0.1.0.tgz" \
+        --create-namespace \
+        --set 'ingress.hosts.host=todoapi.qa.ittlearninggroups.com' \
+        --set 'ingress.tls.hosts={todoapi.qa.ittlearninggroups.com}' \
+        --set 'db.name.value=todoapiqa' \
+        --set "imageCredentials.registry=${DOCKER_SERVER}" \
+        --set "imageCredentials.username=${DOCKER_USERNAME}" \
+        --set "imageCredentials.password=${DOCKER_PSWD}" \
+        --set "imageCredentials.email=${DOCKER_EMAIL}" \
+        --set "dbCredentials.dbusername=${DB_USERNAME}" \
+        --set "dbCredentials.dbpswd=${DB_PSWD_QA}" \
+        -n qa
+
+  !["029"](img/029.png "029")
+
+  !["030"](img/030.png "030")
+
+  !["031"](img/031.png "031")
+
+* There is a more sophisticated way to do this, though.
+  Helm is intended to be used as a package manager that can work with public/private [remote repositories](https://helm.sh/docs/topics/chart_repository/#the-chart-repository-structure) in a similar sort of way that e.g. Docker works with image repositories (only without the space-saving file layering, though there are [experimental versions of helm repos](https://helm.sh/docs/topics/registries/) that work that way):
+
+  !["032"](img/032.png "032")
+
+  * We should be able to designate our GitHub file server as a helm repo that can be access remotely from our local helm CLI, and use it to "pull" a version of the archived helm chart:
+
+  !["033"](img/033.png "033")
+
+  * We can list our locally-registered helm repositories (i.e. those whose indexes we've downloaded locally so helm know how to "talk" to them), and find the `lnds-charts` among them:
+
+  !["036"](img/036.png "036")
+
+  * And we can even search our remote repositories to see what `todoapi` charts are available:
+
+  !["037"](img/037.png "037")
+
+    (Note that other popular publicly-available helm repos include the `stable`, `bitnami`, and `eks` repos that I've added previously to my local helm CLI for other reasons.)
+
+  * We currently have our todoapi `prod` environment running.
+    It was created by installing the chart directory to the `prod` namespace.
+    Let's remove that release and try re-installing using the remote chart via its `lnds-charts` repository:
+
+        helm upgrade --install todoapi lndo-charts/todoapi \
+          --create-namespace \
+          --set 'ingress.hosts.host=todoapi.prod.ittlearninggroups.com' \
+          --set 'ingress.tls.hosts={todoapi.prod.ittlearninggroups.com}' \
+          --set 'db.name.value=todoapiprod' \
+          --set "imageCredentials.registry=${DOCKER_SERVER}" \
+          --set "imageCredentials.username=${DOCKER_USERNAME}" \
+          --set "imageCredentials.password=${DOCKER_PSWD}" \
+          --set "imageCredentials.email=${DOCKER_EMAIL}" \
+          --set "dbCredentials.dbusername=${DB_USERNAME}" \
+          --set "dbCredentials.dbpswd=${DB_PSWD_PROD}" \
+          -n prod
+
+  !["034"](img/034.png "034")
+
+  !["035"](img/035.png "035")
 
 ### 3. RBAC I: Setting up IAM-based admin & developer access roles for the cluster
 
@@ -67,7 +176,7 @@
 
     We could edit this ConfigMap manually, but it's convenient to use `eksctl` for that.
     For this "admin" role, we don't need to create a new K8s Role/ClusterRole and RoleBinding/ClusterRoleBinding.
-    Our cluster already has a convenient `system:masters` group bound to the existing `cluser-admin` ClusterRole. We'll re-use that in this case:
+    Our cluster already has a [convenient `system:masters` group](https://kubernetes.io/docs/reference/access-authn-authz/rbac/#user-facing-roles) bound to the existing `cluser-admin` ClusterRole. We'll re-use that in this case:
 
     !["011"](img/011.png "011")
 
